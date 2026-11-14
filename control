@@ -1,7 +1,7 @@
 Package: com.hasan.camprobe
 Name: CamProbe
 Depends: mobilesubstrate, firmware (>= 15.0)
-Version: 1.0.1
+Version: 1.0.2
 Architecture: iphoneos-arm64
 Description: Diagnostic only. Records the Camera app view layout to /var/mobile/26Cam_probe.txt. Changes nothing.
 Maintainer: Hasan

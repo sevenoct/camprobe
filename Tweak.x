@@ -80,6 +80,50 @@ static void DumpView(UIView *v, int depth, NSMutableString *out) {
 @interface CAMViewfinderViewController : UIViewController
 @end
 
+
+static void DumpCompact(UIView *v, int depth, NSMutableString *out) {
+    if (depth > 7) return;
+    CGRect w = CGRectZero;
+    @try { w = [v convertRect:v.bounds toView:nil]; } @catch (id e) {}
+    BOOL big = (w.size.width >= 90 && w.size.height >= 90);
+    BOOL isPrev = [NSStringFromClass([v class]) containsString:@"Preview"];
+    if (big || isPrev) {
+        NSMutableString *f = [NSMutableString string];
+        if (v.clipsToBounds) [f appendString:@" C"];
+        if (v.hidden) [f appendString:@" H"];
+        if (v.layer.mask) [f appendString:@" MASK"];
+        if (!CGAffineTransformIsIdentity(v.transform)) [f appendFormat:@" xf(%.2f,%.2f)", v.transform.a, v.transform.d];
+        if ([v.layer isKindOfClass:[AVCaptureVideoPreviewLayer class]]) [f appendFormat:@" %@", ((AVCaptureVideoPreviewLayer *)v.layer).videoGravity];
+        NSString *name = [NSStringFromClass([v class]) stringByReplacingOccurrencesOfString:@"CAM" withString:@""];
+        [out appendFormat:@"%*s%@ %.0f,%.0f %.0fx%.0f%@\n", depth, "", name, w.origin.x, w.origin.y, w.size.width, w.size.height, f];
+    }
+    for (CALayer *l in v.layer.sublayers) {
+        if ([l isKindOfClass:[AVCaptureVideoPreviewLayer class]]) {
+            [out appendFormat:@"%*s[PL] %.0f,%.0f %.0fx%.0f %@\n", depth, "", l.frame.origin.x, l.frame.origin.y, l.frame.size.width, l.frame.size.height, ((AVCaptureVideoPreviewLayer *)l).videoGravity];
+        }
+    }
+    for (UIView *s in v.subviews) DumpCompact(s, depth + 1, out);
+}
+
+static UITextView *gOverlay = nil;
+static void ShowOverlay(UIViewController *vc, NSString *text) {
+    UIWindow *win = vc.view.window;
+    if (!win) return;
+    if (!gOverlay) {
+        gOverlay = [[UITextView alloc] init];
+        gOverlay.userInteractionEnabled = NO;
+        gOverlay.editable = NO;
+        gOverlay.backgroundColor = [UIColor colorWithWhite:0 alpha:0.55];
+        gOverlay.textColor = [UIColor greenColor];
+        gOverlay.font = [UIFont fontWithName:@"Menlo" size:6.5] ?: [UIFont systemFontOfSize:6.5];
+        gOverlay.textContainerInset = UIEdgeInsetsMake(20, 2, 0, 2);
+    }
+    if (gOverlay.superview != win) [win addSubview:gOverlay];
+    gOverlay.frame = win.bounds;
+    [win bringSubviewToFront:gOverlay];
+    gOverlay.text = text;
+}
+
 static void ProbeNow(UIViewController *vc) {
     @try {
         UIWindow *win = vc.view.window;
@@ -95,6 +139,9 @@ static void ProbeNow(UIViewController *vc) {
         [body appendString:@"--- view tree ---\n"];
         DumpView(vc.view, 0, body);
 
+        NSMutableString *cmp = [NSMutableString stringWithFormat:@"screen %@ safe %@\n", RectStr([UIScreen mainScreen].bounds), NSStringFromUIEdgeInsets(win.safeAreaInsets)];
+        DumpCompact(vc.view, 0, cmp);
+        ShowOverlay(vc, cmp);
         if ([body isEqualToString:gLastSig]) return;
         gLastSig = [body copy];
 
