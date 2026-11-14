@@ -6,11 +6,36 @@
 #import <AVFoundation/AVFoundation.h>
 #import <QuartzCore/QuartzCore.h>
 
-static NSString *const kProbePath = @"/var/mobile/26Cam_probe.txt";
+static NSArray<NSString *> *ProbePaths(void) {
+    NSString *home = NSHomeDirectory();
+    return @[
+        [home stringByAppendingPathComponent:@"tmp/26Cam_probe.txt"],
+        [home stringByAppendingPathComponent:@"Documents/26Cam_probe.txt"],
+        [home stringByAppendingPathComponent:@"Library/Caches/26Cam_probe.txt"],
+        @"/var/mobile/Media/26Cam_probe.txt",
+        @"/var/mobile/Library/Caches/26Cam_probe.txt",
+        @"/var/mobile/26Cam_probe.txt",
+        @"/var/tmp/26Cam_probe.txt"
+    ];
+}
+static void ProbeAppend(NSString *text) {
+    for (NSString *p in ProbePaths()) {
+        @try {
+            NSFileManager *fm = NSFileManager.defaultManager;
+            if (![fm fileExistsAtPath:p]) {
+                if (![@"" writeToFile:p atomically:NO encoding:NSUTF8StringEncoding error:nil]) continue;
+            }
+            if ([[fm attributesOfItemAtPath:p error:nil] fileSize] > 400 * 1024) continue;
+            NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:p];
+            if (!fh) continue;
+            [fh seekToEndOfFile];
+            [fh writeData:[text dataUsingEncoding:NSUTF8StringEncoding]];
+            [fh closeFile];
+        } @catch (id e) {}
+    }
+}
 static NSString *gLastSig = nil;
 static BOOL gPending = NO;
-static BOOL gStarted = NO;
-static const NSUInteger kMaxBytes = 400 * 1024;
 
 static NSString *RectStr(CGRect r) {
     return [NSString stringWithFormat:@"(%.1f,%.1f %.1fx%.1f)", r.origin.x, r.origin.y, r.size.width, r.size.height];
@@ -77,17 +102,7 @@ static void ProbeNow(UIViewController *vc) {
         [entry appendFormat:@"\n==================== t=%.2f ====================\n", CACurrentMediaTime()];
         [entry appendString:body];
 
-        NSFileManager *fm = NSFileManager.defaultManager;
-        if (!gStarted) {
-            gStarted = YES;
-            [@"" writeToFile:kProbePath atomically:YES encoding:NSUTF8StringEncoding error:nil];
-        }
-        NSDictionary *attrs = [fm attributesOfItemAtPath:kProbePath error:nil];
-        if ([attrs fileSize] > kMaxBytes) return;
-        NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:kProbePath];
-        [fh seekToEndOfFile];
-        [fh writeData:[entry dataUsingEncoding:NSUTF8StringEncoding]];
-        [fh closeFile];
+        ProbeAppend(entry);
     } @catch (id e) {}
 }
 
@@ -104,3 +119,7 @@ static void ProbeNow(UIViewController *vc) {
     });
 }
 %end
+
+%ctor {
+    ProbeAppend([NSString stringWithFormat:@"CamProbe loaded in %@ home=%@\n", NSBundle.mainBundle.bundleIdentifier, NSHomeDirectory()]);
+}
